@@ -1,7 +1,7 @@
 ### Project uses
-php 8.2, docker, redis
+php 8.2, docker
 
-### Instalation
+### Installation
 
 * git clone https://github.com/SarpaliusJ/scraper.git
 * cd scraper
