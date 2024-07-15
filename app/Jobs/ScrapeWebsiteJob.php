@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
+use Symfony\Component\DomCrawler\Crawler;
 
 class ScrapeWebsiteJob implements ShouldQueue
 {
@@ -36,54 +37,51 @@ class ScrapeWebsiteJob implements ShouldQueue
     public function handle(): void
     {
         $client = new Client();
-
         Redis::hset("job:{$this->jobId}", 'status', 'in_progress');
 
         $scrapedData = [];
 
         foreach ($this->urls as $url) {
-            try {
-                $response = $client->request('GET', $url);
-
-                if ($response->getStatusCode() == 200) {
-                    $html = $response->getBody()->getContents();
-
-                    foreach ($this->selectors as $selector) {
-                        $pattern = $this->getPatternForSelector($selector);
-                        preg_match_all($pattern, $html, $matches);
-                        $content = $matches[1] ?? [];
-
-                        $scrapedData[] = [
-                            'url' => $url,
-                            'selector' => $selector,
-                            'content' => $content,
-                        ];
-                    }
-                }
-            } catch (RequestException $e) {
-                Log::error('Request failed', [
-                    'url' => $url,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            $this->scrapeUrl($client, $url, $scrapedData);
         }
 
         Redis::hset("job:{$this->jobId}", 'scraped_data', json_encode($scrapedData));
         Redis::hset("job:{$this->jobId}", 'status', 'completed');
     }
 
-    private function getPatternForSelector($selector): string
+    private function scrapeUrl(Client $client, string $url, array &$scrapedData): void
     {
-        $pattern = '';
+        try {
+            $response = $client->request('GET', $url);
 
-        if (preg_match('/^\.(.+)$/', $selector, $matches)) {
-            $pattern = '/<[^>]*class="[^"]*' . preg_quote($matches[1], '/') . '[^"]*"[^>]*>(.*?)<\/[^>]*>/';
-        } elseif (preg_match('/^#(.+)$/', $selector, $matches)) {
-            $pattern = '/<[^>]*id="' . preg_quote($matches[1], '/') . '"[^>]*>(.*?)<\/[^>]*>/';
-        } else {
-            $pattern = '/<' . preg_quote($selector, '/') . '[^>]*>(.*?)<\/' . preg_quote($selector, '/') . '>/';
+            if ($response->getStatusCode() === 200) {
+                $html = $response->getBody()->getContents();
+                $crawler = new Crawler($html);
+                $this->extractContent($crawler, $url, $scrapedData);
+            }
+        } catch (RequestException $e) {
+            Log::error('Request failed', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
         }
+    }
 
-        return $pattern;
+    private function extractContent(Crawler $crawler, string $url, array &$scrapedData): void
+    {
+        foreach ($this->selectors as $selector) {
+            $elements = $crawler->filter($selector);
+            $content = [];
+
+            foreach ($elements as $element) {
+                $content[] = $element->textContent;
+            }
+
+            $scrapedData[] = [
+                'url' => $url,
+                'selector' => $selector,
+                'content' => $content,
+            ];
+        }
     }
 }

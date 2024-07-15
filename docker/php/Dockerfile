@@ -29,12 +29,28 @@ WORKDIR /var/www
 # Copy existing application directory contents
 COPY . /var/www
 
+# Create laravel caching folders.
+RUN mkdir -p /var/www/storage/framework
+RUN mkdir -p /var/www/storage/framework/cache
+RUN mkdir -p /var/www/storage/framework/testing
+RUN mkdir -p /var/www/storage/framework/sessions
+RUN mkdir -p /var/www/storage/framework/views
+
+# Fix files ownership.
+RUN chown -R www-data /var/www/storage
+RUN chown -R www-data /var/www/storage/framework
+RUN chown -R www-data /var/www/storage/framework/sessions
+
+# Set correct permission.
+RUN chmod -R 755 /var/www/storage
+RUN chmod -R 755 /var/www/storage/logs
+RUN chmod -R 755 /var/www/storage/framework
+RUN chmod -R 755 /var/www/storage/framework/sessions
+RUN chmod -R 755 /var/www/bootstrap
+
+# Adjust user permission & group
 RUN usermod --uid 1000 www-data && \
     groupmod --gid 1001 www-data
-
-# Set permissions for storage and bootstrap/cache
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache \
-    && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
 # Copy existing application directory permissions
 COPY --chown=www-data:www-data . /var/www
